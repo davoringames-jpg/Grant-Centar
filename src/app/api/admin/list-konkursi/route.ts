@@ -53,10 +53,11 @@ export async function DELETE(req: NextRequest) {
     .select("*", { count: "exact", head: true });
 
   // Obrisi sve (koristi gt filter koji uvijek prolazi jer id > 0)
+  // Obrisi sve - status je uvijek 'aktivan' ili 'istekao' ili 'arhiviran'
   const { error } = await supabase
     .from("konkursi")
     .delete()
-    .gt("id", 0);
+    .not("id", "is", null);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
