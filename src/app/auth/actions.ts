@@ -116,7 +116,7 @@ export async function signInWithPassword(
   }
 
   if (error) {
-    return { error: `[DEBUG] ${error.message} (status: ${error.status})` };
+    return { error: "Pogrešan email ili lozinka." };
   }
 
   return { error: null };
