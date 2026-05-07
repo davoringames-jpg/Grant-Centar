@@ -262,9 +262,13 @@ function isKnownBrokenUrl(rawUrl: string): boolean {
   try {
     const parsed = new URL(rawUrl);
     const href = parsed.toString().toLowerCase();
+    const path = parsed.pathname.toLowerCase();
 
     if (href.includes("/pages/pagenotfounderror.aspx")) return true;
     if (href.includes("requesturl=")) return true;
+
+    // Generic landing pages nisu konkretni pozivi
+    if (path === "/" || path === "/www" || path === "/www/") return true;
 
     if (parsed.hostname.includes("rars-msp.org") && parsed.pathname.startsWith("/javni-pozivi/")) {
       return true;
