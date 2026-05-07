@@ -1,6 +1,71 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+type AiResult = {
+  jeKonkurs: boolean;
+  naslov: string;
+  sazetak: string;
+  sektor: string;
+  rokPrijave: string | null;
+};
+
+async function aiObradiKonkurs(
+  naslov: string,
+  opis: string,
+  donator: string,
+  sektorDefault: string
+): Promise<AiResult | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+
+  const prompt = `Analiziraj ovu objavu i vrati JSON.
+
+Donator: ${donator}
+Naslov: ${naslov}
+Opis: ${opis.slice(0, 800)}
+
+Vrati SAMO validan JSON objekat (bez markdown, bez \`\`\`):
+{
+  "jeKonkurs": true/false,
+  "naslov": "kratki čisti naslov na srpskom (max 120 znakova)",
+  "sazetak": "2-3 recenice sažetka na srpskom: ko moze aplicirati, sta se finansira, koliko",
+  "sektor": "jedan od: privreda, poljoprivreda, infrastruktura, zdravstvo, obrazovanje, kultura, sport, omladina, ekologija, digitalizacija, socijala, turizam, nauka, međunarodni, ostalo",
+  "rokPrijave": "datum u formatu YYYY-MM-DD ili null"
+}
+
+jeKonkurs je true samo ako je stvarni javni poziv/konkurs za apliciranje. Vijesti, konferencije, izvještaji = false.`;
+
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      signal: AbortSignal.timeout(15000),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 300,
+        temperature: 0.1,
+      }),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content?.trim();
+    if (!text) return null;
+
+    const parsed = JSON.parse(text) as AiResult;
+    // Fallback za sektor ako AI vrati nesto cudno
+    const validSektori = ["privreda","poljoprivreda","infrastruktura","zdravstvo","obrazovanje","kultura","sport","omladina","ekologija","digitalizacija","socijala","turizam","nauka","međunarodni","ostalo"];
+    if (!validSektori.includes(parsed.sektor)) parsed.sektor = sektorDefault;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 function isAuthorized(req: NextRequest): boolean {
   const authHeader = req.headers.get("authorization");
   const secret = process.env.CRON_SECRET;
@@ -289,17 +354,26 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
+      // AI obrada: klasifikacija + sažetak + sektor + rok prijave
+      const ai = await aiObradiKonkurs(item.naslov, item.ai_sazetak, item.donator, item.sektor);
+
+      // Preskoči stavke koje AI klasifikuje kao ne-konkurse
+      if (ai && !ai.jeKonkurs) {
+        skipped++;
+        continue;
+      }
+
       const { error } = await supabase.from("konkursi").insert({
-        naslov: item.naslov,
+        naslov: ai?.naslov ?? item.naslov,
         izvor_url: item.izvor_url,
         datum_objave: item.datum_objave ?? ranAt.split("T")[0],
-        rok_prijave: null,
-        sektor: item.sektor,
+        rok_prijave: ai?.rokPrijave ?? null,
+        sektor: ai?.sektor ?? item.sektor,
         donator: item.donator,
         iznos_min: null,
         iznos_max: null,
         odobrenost_opstine: true,
-        ai_sazetak: item.ai_sazetak,
+        ai_sazetak: ai?.sazetak ?? item.ai_sazetak,
         status: "aktivan",
       });
 
