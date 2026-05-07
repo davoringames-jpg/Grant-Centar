@@ -29,5 +29,11 @@ CREATE TABLE IF NOT EXISTS public.project_requests (
 
 -- RLS: samo service role može čitati (admin panel)
 ALTER TABLE public.project_requests ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Service role full access" ON public.project_requests
-  USING (true) WITH CHECK (true);
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'project_requests' AND policyname = 'Service role full access'
+  ) THEN
+    EXECUTE 'CREATE POLICY "Service role full access" ON public.project_requests USING (true) WITH CHECK (true)';
+  END IF;
+END $$;
