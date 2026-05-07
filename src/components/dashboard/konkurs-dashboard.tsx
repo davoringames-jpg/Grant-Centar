@@ -73,6 +73,14 @@ export function KonkursDashboard({ konkursi, userTier, subscription }: Dashboard
         </Link>
         <div className="flex-1"></div>
         <div className="flex items-center gap-3">
+          {userTier === "admin" && (
+            <Link
+              href="/admin"
+              className="rounded-full bg-red-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-red-700"
+            >
+              Admin panel
+            </Link>
+          )}
           {isPremium && subscription ? (
             <>
               <Link
@@ -93,6 +101,13 @@ export function KonkursDashboard({ konkursi, userTier, subscription }: Dashboard
                 Одјава
               </button>
             </>
+          ) : isPremium ? (
+            <button
+              onClick={() => startTransition(() => signOut())}
+              className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-400"
+            >
+              Одјава
+            </button>
           ) : (
             <a
               href="/login"
