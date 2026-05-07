@@ -13,7 +13,8 @@ async function aiObradiKonkurs(
   naslov: string,
   opis: string,
   donator: string,
-  sektorDefault: string
+  sektorDefault: string,
+  detaljiTekst: string
 ): Promise<AiResult | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
@@ -22,7 +23,8 @@ async function aiObradiKonkurs(
 
 Donator: ${donator}
 Naslov: ${naslov}
-Opis: ${opis.slice(0, 800)}
+Opis: ${opis.slice(0, 1200)}
+Tekst sa originalne stranice: ${detaljiTekst.slice(0, 3500)}
 
 Vrati SAMO validan JSON objekat (bez markdown, bez \`\`\`):
 {
@@ -33,7 +35,10 @@ Vrati SAMO validan JSON objekat (bez markdown, bez \`\`\`):
   "rokPrijave": "datum u formatu YYYY-MM-DD ili null"
 }
 
-jeKonkurs je true samo ako je stvarni javni poziv/konkurs za apliciranje. Vijesti, konferencije, izvještaji = false.`;
+Pravila:
+- jeKonkurs je true samo ako je stvarni javni poziv/konkurs za apliciranje.
+- Vijesti, konferencije, izvještaji, saopštenja = false.
+- Ako je naveden rok prijave u tekstu (npr. rok, prijave do, najkasnije do), obavezno ga vrati u polju rokPrijave.`;
 
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -85,6 +90,7 @@ type ScrapeSource = {
   donator: string;
   sektor: string;
   pageUrl: string;
+  keywords?: string[];
 };
 
 type ScrapedItem = {
@@ -115,9 +121,49 @@ const RSS_SOURCES: RssSource[] = [
   },
 ];
 
-// HTML stranice za scraping - samo javno dostupne stranice bez SSL problema
-// sportvs.org ima SSL problem na Vercel infrastrukturi - privremeno isključeno
-const SCRAPE_SOURCES: ScrapeSource[] = [];
+// HTML stranice za scraping - stabilni izvori na centralnom portalu Vlade RS
+const SCRAPE_SOURCES: ScrapeSource[] = [
+  {
+    donator: "Vlada RS - Ministarstvo poljoprivrede",
+    sektor: "poljoprivreda",
+    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mps/Pages/default.aspx",
+  },
+  {
+    donator: "Vlada RS - Ministarstvo privrede",
+    sektor: "privreda",
+    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mpp/Pages/default.aspx",
+  },
+  {
+    donator: "Vlada RS - Ministarstvo finansija",
+    sektor: "privreda",
+    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mf/Pages/default.aspx",
+  },
+  {
+    donator: "Vlada RS - Ministarstvo prostornog uredenja",
+    sektor: "infrastruktura",
+    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mgr/Pages/default.aspx",
+  },
+  {
+    donator: "Vlada RS - Ministarstvo nauke",
+    sektor: "nauka",
+    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mnk/Pages/default.aspx",
+  },
+  {
+    donator: "Vlada RS - Ministarstvo porodice",
+    sektor: "socijala",
+    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mpb/Pages/default.aspx",
+  },
+  {
+    donator: "Vlada RS - Ministarstvo kulture",
+    sektor: "kultura",
+    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mpk/Pages/default.aspx",
+  },
+  {
+    donator: "Vlada RS - Ministarstvo zdravlja",
+    sektor: "zdravstvo",
+    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mzsz/Pages/default.aspx",
+  },
+];
 
 // Rijeci koje ukazuju na navigacijske linkove - preskoci
 const NAV_SKIP = new Set([
@@ -126,6 +172,31 @@ const NAV_SKIP = new Set([
   "sljedeća", "prethodna", "login", "prijava", "odjava", "registracija",
   "kontakt", "contact", "o nama", "about", "mapa sajta", "sitemap",
 ]);
+
+const CALL_KEYWORDS = [
+  "javni poziv",
+  "poziv",
+  "konkurs",
+  "konkursi",
+  "javni oglas",
+  "podsticaj",
+  "podsticaji",
+  "grant",
+  "grantovi",
+  "aplikacij",
+  "prijava",
+  "rok",
+  "finansir",
+  "sufinans",
+  "program podrske",
+  "program podrške",
+  "javni",
+  "јавни",
+  "конкурс",
+  "позив",
+  "подстица",
+  "пријав",
+];
 
 function stripHtml(html: string): string {
   return html
@@ -139,6 +210,75 @@ function stripHtml(html: string): string {
     .replace(/&#\d+;/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function containsCallKeyword(value: string): boolean {
+  const text = value.toLowerCase();
+  return CALL_KEYWORDS.some((keyword) => text.includes(keyword));
+}
+
+function parseDateToken(token: string): string | null {
+  const cleaned = token.trim();
+
+  const ymd = cleaned.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (ymd) return `${ymd[1]}-${ymd[2]}-${ymd[3]}`;
+
+  const dmy = cleaned.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})\.?$/);
+  if (!dmy) return null;
+
+  const day = Number(dmy[1]);
+  const month = Number(dmy[2]);
+  const year = Number(dmy[3].length === 2 ? `20${dmy[3]}` : dmy[3]);
+
+  if (day < 1 || day > 31 || month < 1 || month > 12 || year < 2000 || year > 2100) {
+    return null;
+  }
+
+  const dd = String(day).padStart(2, "0");
+  const mm = String(month).padStart(2, "0");
+  return `${year}-${mm}-${dd}`;
+}
+
+function extractDeadlineFromText(text: string): string | null {
+  const lower = text.toLowerCase();
+
+  const withKeyword = lower.match(
+    /(rok|prijave|najkasnije|krajnji\s+rok|trajanje\s+poziva)[^\d]{0,40}(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i,
+  );
+  if (withKeyword?.[2]) {
+    return parseDateToken(withKeyword[2]);
+  }
+
+  const fallback = lower.match(/(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/);
+  if (fallback?.[1]) {
+    return parseDateToken(fallback[1]);
+  }
+
+  return null;
+}
+
+async function fetchItemContext(url: string): Promise<{ url: string; text: string; rok: string | null }> {
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(12000),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; GrantPortalRS/1.0; +https://grant-centar.vercel.app)",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+
+    if (!res.ok) {
+      return { url, text: "", rok: null };
+    }
+
+    const finalUrl = res.url || url;
+    const html = await res.text();
+    const text = stripHtml(html).slice(0, 6000);
+    const rok = extractDeadlineFromText(text);
+    return { url: finalUrl, text, rok };
+  } catch {
+    return { url, text: "", rok: null };
+  }
 }
 
 function parseRssFeed(xml: string, source: RssSource): ScrapedItem[] {
@@ -249,8 +389,6 @@ async function scrapeHtmlSource(source: ScrapeSource): Promise<SourceResult> {
 
     const html = await res.text();
     const base = new URL(source.pageUrl);
-    // Normalizovani bazni path - bez trailing slash
-    const basePath = base.pathname.replace(/\/$/, "");
 
     const items: ScrapedItem[] = [];
     const seen = new Set<string>();
@@ -271,7 +409,7 @@ async function scrapeHtmlSource(source: ScrapeSource): Promise<SourceResult> {
 
       let url: string;
       try {
-        url = new URL(href, base).toString().split("#")[0].split("?")[0];
+        url = new URL(href, base).toString().split("#")[0];
       } catch {
         continue;
       }
@@ -283,12 +421,12 @@ async function scrapeHtmlSource(source: ScrapeSource): Promise<SourceResult> {
         continue;
       }
 
-      const urlPath = new URL(url).pathname.replace(/\/$/, "");
+      const relevanceText = `${innerText} ${url}`;
+      const isRelevant = source.keywords?.length
+        ? source.keywords.some((kw) => relevanceText.toLowerCase().includes(kw.toLowerCase()))
+        : containsCallKeyword(relevanceText);
 
-      // Mora biti dublja putanja od liste (child item)
-      if (urlPath === basePath) continue;
-      if (!urlPath.startsWith(basePath + "/")) continue;
-
+      if (!isRelevant) continue;
       if (seen.has(url)) continue;
       seen.add(url);
 
@@ -346,8 +484,30 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
+      const pageContext = await fetchItemContext(item.izvor_url);
+      const finalUrl = pageContext.url || item.izvor_url;
+
+      if (finalUrl !== item.izvor_url) {
+        const { data: redirectedExisting } = await supabase
+          .from("konkursi")
+          .select("id")
+          .eq("izvor_url", finalUrl)
+          .maybeSingle();
+
+        if (redirectedExisting) {
+          skipped++;
+          continue;
+        }
+      }
+
       // AI obrada: klasifikacija + sažetak + sektor + rok prijave
-      const ai = await aiObradiKonkurs(item.naslov, item.ai_sazetak, item.donator, item.sektor);
+      const ai = await aiObradiKonkurs(
+        item.naslov,
+        item.ai_sazetak,
+        item.donator,
+        item.sektor,
+        pageContext.text,
+      );
 
       // Preskoči stavke koje AI klasifikuje kao ne-konkurse
       if (ai && !ai.jeKonkurs) {
@@ -355,11 +515,13 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
+      const detectedRok = ai?.rokPrijave ?? pageContext.rok ?? extractDeadlineFromText(item.ai_sazetak);
+
       const { error } = await supabase.from("konkursi").insert({
         naslov: ai?.naslov ?? item.naslov,
-        izvor_url: item.izvor_url,
+        izvor_url: finalUrl,
         datum_objave: item.datum_objave ?? ranAt.split("T")[0],
-        rok_prijave: ai?.rokPrijave ?? null,
+        rok_prijave: detectedRok,
         sektor: ai?.sektor ?? item.sektor,
         donator: item.donator,
         iznos_min: null,

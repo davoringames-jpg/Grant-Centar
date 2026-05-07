@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-const TRUSTED_DONATORS = new Set(["RARS-MSP"]);
+const HIDE_BROKEN_URL_PARTS = ["/www/"];
 
 function normalizeKonkursUrl(rawUrl: string): string | null {
   try {
@@ -21,8 +21,8 @@ function normalizeKonkursUrl(rawUrl: string): string | null {
 
     parsed.hash = "";
 
-    // WordPress RSS nekad vraca /www/ homepage umjesto objave.
-    if (parsed.pathname === "/www/" || parsed.pathname === "/www") {
+    // Sakrij poznate neispravne URL putanje.
+    if (HIDE_BROKEN_URL_PARTS.some((part) => parsed.pathname.includes(part))) {
       return null;
     }
 
@@ -87,6 +87,7 @@ async function getKonkursi(): Promise<Konkurs[]> {
   const supabase = await createClient();
 
   if (!supabase) {
+    // Lokalni fallback ako Supabase nije konfigurisan.
     return demoKonkursi;
   }
 
@@ -97,12 +98,12 @@ async function getKonkursi(): Promise<Konkurs[]> {
     )
     .order("rok_prijave", { ascending: true, nullsFirst: false });
 
-  if (error || !data || data.length === 0) {
-    return demoKonkursi;
+  if (error || !data) {
+    // Na produkciji ne prikazuj demo podatke ako je DB dostupna.
+    return [];
   }
 
   const filtered = data
-    .filter((item) => TRUSTED_DONATORS.has((item as { donator?: string }).donator ?? ""))
     .map((item) => {
       const normalizedUrl = normalizeKonkursUrl(item.izvor_url);
       if (!normalizedUrl) return null;
@@ -112,5 +113,5 @@ async function getKonkursi(): Promise<Konkurs[]> {
     })
     .filter((item): item is Exclude<typeof item, null> => item !== null);
 
-  return filtered.length > 0 ? filtered : demoKonkursi;
+  return filtered;
 }
