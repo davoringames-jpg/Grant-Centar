@@ -1,7 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { useMemo, useState, useTransition } from "react";
 
+import { signOut } from "@/app/auth/actions";
+import { LicenseInfo } from "@/components/license-info";
+import { ProjektModal } from "@/components/dashboard/projekt-modal";
 import {
   formatCurrencyRange,
   getDeadlineLabel,
@@ -9,13 +14,30 @@ import {
   type Konkurs,
 } from "@/lib/konkursi";
 
+type UserTier = "public" | "subscriber" | "admin";
+
+type Subscription = {
+  id: string;
+  tier: string;
+  status: string;
+  created_at: string;
+  expires_at: string;
+} | null;
+
 type DashboardProps = {
   konkursi: Konkurs[];
+  userTier: UserTier;
+  subscription?: Subscription;
 };
 
-export function KonkursDashboard({ konkursi }: DashboardProps) {
+const NOW_MS = Date.now();
+
+export function KonkursDashboard({ konkursi, userTier, subscription }: DashboardProps) {
+  const isPremium = userTier === "subscriber" || userTier === "admin";
+  const [, startTransition] = useTransition();
   const [sector, setSector] = useState<string>("svi");
   const [status, setStatus] = useState<string>("svi");
+  const [projektKonkurs, setProjektKonkurs] = useState<Konkurs | null>(null);
 
   const sectors = useMemo(() => {
     return ["svi", ...new Set(konkursi.map((item) => item.sektor))];
@@ -35,13 +57,52 @@ export function KonkursDashboard({ konkursi }: DashboardProps) {
       return false;
     }
 
-    const diff = new Date(item.rok_prijave).getTime() - Date.now();
+    const diff = new Date(item.rok_prijave).getTime() - NOW_MS;
     const daysLeft = Math.ceil(diff / (1000 * 60 * 60 * 24));
     return daysLeft >= 0 && daysLeft < 7;
   }).length;
 
   return (
+    <>
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-6 py-10 lg:px-10">
+      {/* Nav bar */}
+      <nav className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white/95 px-5 py-3 shadow-sm backdrop-blur-sm">
+        <Link href="/" className="flex items-center gap-2 transition hover:opacity-80">
+          <Image src="/image.png" alt="Grant Portal" width={120} height={48} className="h-10 w-auto" />
+          <span className="text-base font-bold text-slate-900 tracking-tight">Грант Портал</span>
+        </Link>
+        <div className="flex-1"></div>
+        <div className="flex items-center gap-3">
+          {isPremium && subscription ? (
+            <>
+              <Link
+                href="/profile"
+                className="hidden items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-400 sm:flex"
+              >
+                <LicenseInfo
+                  expiresAt={subscription.expires_at}
+                  tier={subscription.tier}
+                  status={subscription.status}
+                  compact
+                />
+              </Link>
+              <button
+                onClick={() => startTransition(() => signOut())}
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-400"
+              >
+                Одјава
+              </button>
+            </>
+          ) : (
+            <a
+              href="/login"
+              className="rounded-full bg-slate-950 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
+            >
+              Prijava
+            </a>
+          )}
+        </div>
+      </nav>
       <section className="overflow-hidden rounded-[32px] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.18),_transparent_36%),linear-gradient(135deg,#0f172a_0%,#1d4ed8_46%,#22c55e_100%)] p-8 text-white shadow-[0_32px_80px_rgba(15,23,42,0.35)]">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
@@ -49,11 +110,11 @@ export function KonkursDashboard({ konkursi }: DashboardProps) {
               Grant Portal RS
             </p>
             <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">
-              Monitoring javnih poziva za opštine Republike Srpske.
+              Monitoring javnih poziva za opštine i gradove Republike Srpske.
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-sky-50/90 sm:text-lg">
-              MVP dashboard za pregled konkursa, brzu procjenu rokova i AI sažetak
-              svake prilike na jednom mjestu.
+              Svi javni pozivi i grantovi na jednom mjestu — brza procjena rokova,
+              detalji finansiranja i stručna podrška za pisanje projekata.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -121,7 +182,18 @@ export function KonkursDashboard({ konkursi }: DashboardProps) {
             </div>
 
             <h2 className="mt-5 text-2xl font-semibold tracking-tight text-slate-950">
-              {konkurs.naslov}
+              {konkurs.izvor_url ? (
+                <a
+                  href={konkurs.izvor_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="transition hover:text-blue-700 hover:underline"
+                >
+                  {konkurs.naslov}
+                </a>
+              ) : (
+                konkurs.naslov
+              )}
             </h2>
 
             <div className="mt-5 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
@@ -130,25 +202,55 @@ export function KonkursDashboard({ konkursi }: DashboardProps) {
                 label="Rok prijave"
                 value={konkurs.rok_prijave ? formatDate(konkurs.rok_prijave) : "Nije objavljen"}
               />
-              <InfoItem label="Iznos" value={formatCurrencyRange(konkurs.iznos_min, konkurs.iznos_max)} />
-              <InfoItem
-                label="Opštine prihvatljive"
-                value={konkurs.odobrenost_opstine ? "Da" : "Ne"}
-              />
+              {isPremium ? (
+                <>
+                  <InfoItem label="Iznos" value={formatCurrencyRange(konkurs.iznos_min, konkurs.iznos_max)} />
+                  <InfoItem
+                    label="Opštine i gradovi prihvatljivi"
+                    value={konkurs.odobrenost_opstine ? "Da" : "Ne"}
+                  />
+                </>
+              ) : null}
             </div>
 
-            <p className="mt-5 flex-1 text-sm leading-7 text-slate-700">
-              {konkurs.ai_sazetak ?? "AI sažetak još nije generisan za ovaj konkurs."}
-            </p>
+            {isPremium ? (
+              <p className="mt-5 flex-1 text-sm leading-7 text-slate-700">
+                {konkurs.ai_sazetak ?? "Sažetak još nije dostupan za ovaj konkurs."}
+              </p>
+            ) : (
+              <div className="mt-5 flex-1 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center">
+                <p className="text-xs font-medium text-slate-500">
+                  Sažetak, iznos i dokumentacija dostupni pretplatnicima.
+                </p>
+                <a
+                  href="/login"
+                  className="mt-3 inline-flex items-center rounded-full bg-blue-700 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-800"
+                >
+                  Prijavite se →
+                </a>
+              </div>
+            )}
 
-            <a
-              href={konkurs.izvor_url}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-6 inline-flex h-12 items-center justify-center rounded-2xl bg-slate-950 px-5 text-sm font-medium text-white transition hover:bg-blue-700"
-            >
-              Otvori izvor konkursa
-            </a>
+            {isPremium ? (
+              <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+                {konkurs.izvor_url ? (
+                  <a
+                    href={konkurs.izvor_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 inline-flex h-12 items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-medium text-white transition hover:bg-blue-700"
+                  >
+                    Otvori izvor →
+                  </a>
+                ) : null}
+                <button
+                  onClick={() => setProjektKonkurs(konkurs)}
+                  className="flex-1 inline-flex h-12 items-center justify-center rounded-2xl border-2 border-blue-700 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-700 hover:text-white"
+                >
+                  ✍ Napiši mi projekat
+                </button>
+              </div>
+            ) : null}
           </article>
         ))}
       </section>
@@ -159,6 +261,14 @@ export function KonkursDashboard({ konkursi }: DashboardProps) {
         </section>
       ) : null}
     </div>
+
+    {projektKonkurs ? (
+      <ProjektModal
+        konkurs={projektKonkurs}
+        onClose={() => setProjektKonkurs(null)}
+      />
+    ) : null}
+    </>
   );
 }
 
