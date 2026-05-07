@@ -105,9 +105,12 @@ async function getKonkursi(): Promise<Konkurs[]> {
     .filter((item) => TRUSTED_DONATORS.has((item as { donator?: string }).donator ?? ""))
     .map((item) => {
       const normalizedUrl = normalizeKonkursUrl(item.izvor_url);
-      return normalizedUrl ? { ...item, izvor_url: normalizedUrl } : null;
+      if (!normalizedUrl) return null;
+
+      const { donator: _donator, ...rest } = item as { donator?: string } & Konkurs;
+      return { ...rest, izvor_url: normalizedUrl };
     })
-    .filter((item): item is Konkurs => item !== null);
+    .filter((item): item is Exclude<typeof item, null> => item !== null);
 
   return filtered.length > 0 ? filtered : demoKonkursi;
 }
