@@ -318,6 +318,64 @@ function parseDateToken(token: string): string | null {
   return `${year}-${mm}-${dd}`;
 }
 
+function parseIsoToYmd(value: string): string | null {
+  const d = new Date(value.trim());
+  if (Number.isNaN(d.getTime())) return null;
+  const ymd = d.toISOString().split("T")[0];
+  const year = Number(ymd.slice(0, 4));
+  if (year < 2015 || year > 2100) return null;
+  return ymd;
+}
+
+function extractPublishedDate(html: string, text: string, url: string): string | null {
+  // 1) Probaj standardne meta/datePublished vrijednosti
+  const metaCandidates: string[] = [];
+  const metaPatterns = [
+    /<meta[^>]+property=["']article:published_time["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+name=["']pubdate["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+name=["']date["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+itemprop=["']datePublished["'][^>]+content=["']([^"']+)["']/i,
+    /"datePublished"\s*:\s*"([^"]+)"/i,
+    /<time[^>]+datetime=["']([^"']+)["']/i,
+  ];
+
+  for (const pattern of metaPatterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) metaCandidates.push(match[1]);
+  }
+
+  for (const candidate of metaCandidates) {
+    const byIso = parseIsoToYmd(candidate);
+    if (byIso) return byIso;
+
+    const token = candidate.match(/(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/);
+    if (token?.[1]) {
+      const parsed = parseDateToken(token[1]);
+      if (parsed) return parsed;
+    }
+  }
+
+  // 2) Probaj iz teksta sa kontekstom "objavljeno/datum"
+  const lower = text.toLowerCase();
+  const textMatch = lower.match(
+    /(objavljeno|datum objave|published|објављено|датум)[^\d]{0,30}(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i,
+  );
+  if (textMatch?.[2]) {
+    const parsed = parseDateToken(textMatch[2]);
+    if (parsed) return parsed;
+  }
+
+  // 3) WordPress URL fallback: /YYYY/MM/DD/
+  const fromUrl = url.match(/\/(20\d{2})\/(\d{2})\/(\d{2})(\/|$)/);
+  if (fromUrl) {
+    const ymd = `${fromUrl[1]}-${fromUrl[2]}-${fromUrl[3]}`;
+    const valid = parseDateToken(ymd);
+    if (valid) return valid;
+  }
+
+  return null;
+}
+
 function extractDeadlineFromText(text: string): string | null {
   const lower = text.toLowerCase();
 
@@ -336,10 +394,10 @@ function extractDeadlineFromText(text: string): string | null {
   return null;
 }
 
-async function fetchItemContext(url: string): Promise<{ url: string; text: string; rok: string | null; broken: boolean }> {
+async function fetchItemContext(url: string): Promise<{ url: string; text: string; rok: string | null; objava: string | null; broken: boolean }> {
   try {
     if (isKnownBrokenUrl(url)) {
-      return { url, text: "", rok: null, broken: true };
+      return { url, text: "", rok: null, objava: null, broken: true };
     }
 
     const res = await fetch(url, {
@@ -351,18 +409,19 @@ async function fetchItemContext(url: string): Promise<{ url: string; text: strin
     });
 
     if (!res.ok) {
-      return { url, text: "", rok: null, broken: true };
+      return { url, text: "", rok: null, objava: null, broken: true };
     }
 
     const finalUrl = res.url || url;
     const html = await res.text();
     const text = stripHtml(html).slice(0, 6000);
     const rok = extractDeadlineFromText(text);
+    const objava = extractPublishedDate(html, text, finalUrl);
 
     const broken = isKnownBrokenUrl(finalUrl) || isKnownBrokenPageText(text);
-    return { url: finalUrl, text, rok, broken };
+    return { url: finalUrl, text, rok, objava, broken };
   } catch {
-    return { url, text: "", rok: null, broken: true };
+    return { url, text: "", rok: null, objava: null, broken: true };
   }
 }
 
@@ -611,10 +670,12 @@ export async function GET(req: NextRequest) {
 
       const detectedRok = ai?.rokPrijave ?? pageContext.rok ?? extractDeadlineFromText(item.ai_sazetak);
 
+      const datumObjave = item.datum_objave ?? pageContext.objava ?? ranAt.split("T")[0];
+
       const { error } = await supabase.from("konkursi").insert({
         naslov: ai?.naslov ?? item.naslov,
         izvor_url: finalUrl,
-        datum_objave: item.datum_objave ?? ranAt.split("T")[0],
+        datum_objave: datumObjave,
         rok_prijave: detectedRok,
         sektor: ai?.sektor ?? item.sektor,
         donator: item.donator,
