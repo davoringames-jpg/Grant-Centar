@@ -38,38 +38,40 @@ type SourceResult = {
 };
 
 // RSS feeds - automatski povlace sve nove objave
+// RSS feeds - automatski povlace sve nove objave
+// Keywords su prazni niz = prihvati sve objave bez filtriranja
 const RSS_SOURCES: RssSource[] = [
   {
     donator: "RARS-MSP",
     sektor: "privreda",
     feedUrl: "https://www.rars-msp.org/feed",
     pageUrl: "https://www.rars-msp.org/javni-pozivi",
-    keywords: ["poziv", "konkurs", "grant", "javni", "prijav", "podrsk", "program", "poziva"],
+    // Prazan niz = uzmi sve (RSS je vec curilica, keyword filter latinice ne radi)
+    keywords: [],
   },
   {
-    donator: "Swiss PRO (SDC)",
+    donator: "INTERREG Adriatic-Ionian",
     sektor: "međunarodni",
-    feedUrl: "https://www.swiss-pro.ba/feed",
-    pageUrl: "https://www.swiss-pro.ba/pozivi-za-aplikacije/",
-    keywords: ["poziv", "konkurs", "grant", "aplikacij", "prijav", "podrsk"],
+    feedUrl: "https://www.adriatic-ionian.eu/feed",
+    pageUrl: "https://www.adriatic-ionian.eu/calls-for-proposals/",
+    keywords: ["call", "proposal", "grant", "open"],
+  },
+  {
+    donator: "UNDP BiH",
+    sektor: "međunarodni",
+    feedUrl: "https://www.undp.org/bosnia-herzegovina/feed",
+    pageUrl: "https://www.undp.org/bosnia-herzegovina",
+    keywords: ["call", "grant", "tender", "procurement", "poziv"],
   },
 ];
 
-// HTML stranice za scraping - izvlace direktne linkove na javne pozive
+// HTML stranice za scraping - samo javno dostupne stranice bez SSL problema
 const SCRAPE_SOURCES: ScrapeSource[] = [
-  { donator: "MULS RS", sektor: "omladina", pageUrl: "https://www.muls.vladars.net/sr/javni-pozivi" },
-  { donator: "Min. privrede RS", sektor: "privreda", pageUrl: "https://www.mpp.vladars.net/sr/javni-pozivi" },
-  { donator: "Min. nauke RS", sektor: "nauka", pageUrl: "https://www.mnk.vladars.net/sr/konkursi" },
-  { donator: "Min. poljoprivrede RS", sektor: "poljoprivreda", pageUrl: "https://www.mps.vladars.net/sr/javni-pozivi" },
-  { donator: "Min. prostornog uredjenja RS", sektor: "infrastruktura", pageUrl: "https://www.mgr.vladars.net/sr/javni-pozivi" },
-  { donator: "Min. zdravlja RS", sektor: "zdravstvo", pageUrl: "https://www.mzsz.vladars.net/sr/javni-pozivi" },
-  { donator: "Min. prosvjete RS", sektor: "obrazovanje", pageUrl: "https://www.mpk.vladars.net/sr/konkursi" },
-  { donator: "Min. sporta RS", sektor: "sport", pageUrl: "https://www.moso.vladars.net/sr/javni-pozivi" },
   { donator: "FZO RS", sektor: "zdravstvo", pageUrl: "https://www.fzors.ba/javni-pozivi" },
-  { donator: "IRB RS", sektor: "privreda", pageUrl: "https://www.irbrs.org/sr/krediti/javni-sektor" },
-  { donator: "INTERREG Adriatic-Ionian", sektor: "međunarodni", pageUrl: "https://www.adriatic-ionian.eu/calls-for-proposals/" },
-  { donator: "UNDP BiH", sektor: "međunarodni", pageUrl: "https://www.undp.org/bosnia-herzegovina/procurement" },
-  { donator: "OSCE BiH", sektor: "međunarodni", pageUrl: "https://www.osce.org/mission-to-bosnia-and-herzegovina/grants" },
+  { donator: "Swiss PRO (SDC)", sektor: "međunarodni", pageUrl: "https://www.swiss-pro.ba/pozivi-za-aplikacije/" },
+  { donator: "IRB RS", sektor: "privreda", pageUrl: "https://www.irbrs.org/sr/javni-pozivi" },
+  { donator: "EU4Business BiH", sektor: "privreda", pageUrl: "https://eu4business.ba/calls/" },
+  { donator: "USAID BiH", sektor: "međunarodni", pageUrl: "https://ba.usembassy.gov/grants/" },
 ];
 
 // Rijeci koje ukazuju na navigacijske linkove - preskoci
@@ -129,9 +131,12 @@ function parseRssFeed(xml: string, source: RssSource): ScrapedItem[] {
     const naslov = titleMatch[1].trim();
     const link = decodeURIComponent(linkMatch[1].trim());
 
-    const combined = `${naslov} ${link}`.toLowerCase();
-    const relevant = source.keywords.some((kw) => combined.includes(kw));
-    if (!relevant) continue;
+    // Ako keywords nije prazan, filtriraj - inace prihvati sve
+    if (source.keywords.length > 0) {
+      const combined = `${naslov} ${link}`.toLowerCase();
+      const relevant = source.keywords.some((kw) => combined.includes(kw));
+      if (!relevant) continue;
+    }
     if (link === source.pageUrl || link.endsWith("/www/")) continue;
 
     // Sazetak iz opisa, ako postoji
