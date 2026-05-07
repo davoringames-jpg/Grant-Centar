@@ -163,6 +163,19 @@ const SCRAPE_SOURCES: ScrapeSource[] = [
     sektor: "zdravstvo",
     pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mzsz/Pages/default.aspx",
   },
+  {
+    donator: "Eko fond RS",
+    sektor: "ekologija",
+    pageUrl: "https://www.ekofondrs.org/",
+    keywords: [
+      "javni konkurs",
+      "javni poziv",
+      "otvoren javni konkurs",
+      "odluka o izboru korisnika",
+      "јавни конкурс",
+      "јавни позив",
+    ],
+  },
 ];
 
 // Rijeci koje ukazuju na navigacijske linkove - preskoci
