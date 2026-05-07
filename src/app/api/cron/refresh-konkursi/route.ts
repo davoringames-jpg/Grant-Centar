@@ -217,6 +217,40 @@ function containsCallKeyword(value: string): boolean {
   return CALL_KEYWORDS.some((keyword) => text.includes(keyword));
 }
 
+function isKnownBrokenUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    const href = parsed.toString().toLowerCase();
+
+    if (href.includes("/pages/pagenotfounderror.aspx")) return true;
+    if (href.includes("requesturl=")) return true;
+
+    if (parsed.hostname.includes("rars-msp.org") && parsed.pathname.startsWith("/javni-pozivi/")) {
+      return true;
+    }
+
+    if (parsed.hostname.includes("vladars.rs") && parsed.pathname === "/turizam") {
+      return true;
+    }
+
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function isKnownBrokenPageText(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("oops! that page can") ||
+    lower.includes("page can\'t be found") ||
+    lower.includes("page can’t be found") ||
+    lower.includes("nothing was found at this location") ||
+    lower.includes("pagenotfounderror.aspx") ||
+    lower.includes("404 not found")
+  );
+}
+
 function parseDateToken(token: string): string | null {
   const cleaned = token.trim();
 
@@ -257,8 +291,12 @@ function extractDeadlineFromText(text: string): string | null {
   return null;
 }
 
-async function fetchItemContext(url: string): Promise<{ url: string; text: string; rok: string | null }> {
+async function fetchItemContext(url: string): Promise<{ url: string; text: string; rok: string | null; broken: boolean }> {
   try {
+    if (isKnownBrokenUrl(url)) {
+      return { url, text: "", rok: null, broken: true };
+    }
+
     const res = await fetch(url, {
       signal: AbortSignal.timeout(12000),
       headers: {
@@ -268,16 +306,18 @@ async function fetchItemContext(url: string): Promise<{ url: string; text: strin
     });
 
     if (!res.ok) {
-      return { url, text: "", rok: null };
+      return { url, text: "", rok: null, broken: true };
     }
 
     const finalUrl = res.url || url;
     const html = await res.text();
     const text = stripHtml(html).slice(0, 6000);
     const rok = extractDeadlineFromText(text);
-    return { url: finalUrl, text, rok };
+
+    const broken = isKnownBrokenUrl(finalUrl) || isKnownBrokenPageText(text);
+    return { url: finalUrl, text, rok, broken };
   } catch {
-    return { url, text: "", rok: null };
+    return { url, text: "", rok: null, broken: true };
   }
 }
 
@@ -486,6 +526,11 @@ export async function GET(req: NextRequest) {
 
       const pageContext = await fetchItemContext(item.izvor_url);
       const finalUrl = pageContext.url || item.izvor_url;
+
+      if (pageContext.broken || isKnownBrokenUrl(finalUrl)) {
+        skipped++;
+        continue;
+      }
 
       if (finalUrl !== item.izvor_url) {
         const { data: redirectedExisting } = await supabase

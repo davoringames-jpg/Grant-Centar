@@ -12,6 +12,28 @@ import { redirect } from "next/navigation";
 
 const HIDE_BROKEN_URL_PARTS = ["/www/"];
 
+function isKnownBrokenUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    const href = parsed.toString().toLowerCase();
+
+    if (href.includes("/pages/pagenotfounderror.aspx")) return true;
+    if (href.includes("requesturl=")) return true;
+
+    if (parsed.hostname.includes("rars-msp.org") && parsed.pathname.startsWith("/javni-pozivi/")) {
+      return true;
+    }
+
+    if (parsed.hostname.includes("vladars.rs") && parsed.pathname === "/turizam") {
+      return true;
+    }
+
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 function normalizeKonkursUrl(rawUrl: string): string | null {
   try {
     const parsed = new URL(rawUrl);
@@ -23,6 +45,10 @@ function normalizeKonkursUrl(rawUrl: string): string | null {
 
     // Sakrij poznate neispravne URL putanje.
     if (HIDE_BROKEN_URL_PARTS.some((part) => parsed.pathname.includes(part))) {
+      return null;
+    }
+
+    if (isKnownBrokenUrl(parsed.toString())) {
       return null;
     }
 
