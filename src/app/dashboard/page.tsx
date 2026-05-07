@@ -10,6 +10,28 @@ import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+const TRUSTED_DONATORS = new Set(["RARS-MSP"]);
+
+function normalizeKonkursUrl(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+
+    parsed.hash = "";
+
+    // WordPress RSS nekad vraca /www/ homepage umjesto objave.
+    if (parsed.pathname === "/www/" || parsed.pathname === "/www") {
+      return null;
+    }
+
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 export default async function DashboardPage() {
   const user = await getUser();
 
@@ -71,7 +93,7 @@ async function getKonkursi(): Promise<Konkurs[]> {
   const { data, error } = await supabase
     .from("konkursi")
     .select(
-      "id, naslov, izvor_url, datum_objave, rok_prijave, sektor, iznos_min, iznos_max, odobrenost_opstine, ai_sazetak, status",
+      "id, naslov, izvor_url, datum_objave, rok_prijave, sektor, iznos_min, iznos_max, odobrenost_opstine, ai_sazetak, status, donator",
     )
     .order("rok_prijave", { ascending: true, nullsFirst: false });
 
@@ -79,5 +101,13 @@ async function getKonkursi(): Promise<Konkurs[]> {
     return demoKonkursi;
   }
 
-  return data;
+  const filtered = data
+    .filter((item) => TRUSTED_DONATORS.has((item as { donator?: string }).donator ?? ""))
+    .map((item) => {
+      const normalizedUrl = normalizeKonkursUrl(item.izvor_url);
+      return normalizedUrl ? { ...item, izvor_url: normalizedUrl } : null;
+    })
+    .filter((item): item is Konkurs => item !== null);
+
+  return filtered.length > 0 ? filtered : demoKonkursi;
 }
