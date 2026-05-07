@@ -35,10 +35,22 @@ Vrati SAMO validan JSON objekat (bez markdown, bez \`\`\`):
   "rokPrijave": "datum u formatu YYYY-MM-DD ili null"
 }
 
-Pravila:
-- jeKonkurs je true samo ako je stvarni javni poziv/konkurs za apliciranje.
-- Vijesti, konferencije, izvještaji, saopštenja = false.
-- Ako je naveden rok prijave u tekstu (npr. rok, prijave do, najkasnije do), obavezno ga vrati u polju rokPrijave.`;
+STROGA PRAVILA - jeKonkurs = true SAMO AKO JE SVE UREDU:
+1. Objava je aktivan OTVORENI poziv na koji se MOŽE aplicirati/prijaviti sada ili uskoro.
+2. Postoji jasno navedeni donator/finansijer koji nudi sredstva.
+3. Postoje uslovi za apliciranje ili rok prijave.
+
+jeKonkurs = FALSE (obavezno odbij) ako je:
+- Javne konsultacije ili e-konsultacije (traženje mišljenja, NIJE poziv za finansiranje)
+- Prijedlog, nacrt ili uredba (regulatorni dokument)
+- Pravilnik, zakon, odluka Vlade
+- Rezultati ili lista korisnika (konkurs je završen)
+- Saopštenje o dodjeli sredstava (konkurs je završen)
+- Vijest, press release, konferencija za novinare
+- Satellitsko snimanje, tender za usluge (nije grant za privredu/organizacije)
+- Stranica koja nije u potpunosti o pozivu/konkursu
+
+Ako je naveden rok prijave u tekstu (rok, prijave do, najkasnije do), obavezno ga vrati u rokPrijave.`;
 
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -186,30 +198,46 @@ const NAV_SKIP = new Set([
   "kontakt", "contact", "o nama", "about", "mapa sajta", "sitemap",
 ]);
 
+// URL i naslov pattern-i koji ukazuju na NIJE javni poziv - blokiraj
+const BLOCK_URL_PATTERNS = [
+  // Konsultacije - nisu pozivi za apliciranje
+  "konsultacije", "konsultacija", "консулта",
+  // Rezultati - poziv je zavrsio
+  "rezultati", "rezultat-", "lista-privrednih", "lista-korisnika", "lista-podnosilaca",
+  "izabrani", "dodijeljene", "dodjeljena", "odluka-o-izboru",
+  // Propisi i prijedlozi
+  "prijedlog-uredbe", "nacrt-uredbe", "pravilnik", "uredba-o",
+  // Saopstenja i vijesti (opste, ne pozivi)
+  "saopstenje", "saopštenje", "press-release",
+  // Login/auth stranice
+  "Authenticate.aspx", "/_layouts/15/", "signout", "/_api/",
+];
+
 const CALL_KEYWORDS = [
   "javni poziv",
-  "poziv",
-  "konkurs",
-  "konkursi",
+  "javni konkurs",
   "javni oglas",
-  "podsticaj",
-  "podsticaji",
+  "poziv za dostavljanje",
+  "konkurs za",
+  "podsticaji za",
+  "sufinansiranje",
   "grant",
   "grantovi",
-  "aplikacij",
-  "prijava",
-  "rok",
-  "finansir",
+  "finansijska podrska",
+  "finansijska podrška",
+  // cirilica
+  "јавни позив",
+  "јавни конкурс",
+  "јавни оглас",
+  "конкурс за",
   "sufinans",
-  "program podrske",
-  "program podrške",
-  "javni",
-  "јавни",
-  "конкурс",
-  "позив",
   "подстица",
-  "пријав",
 ];
+
+function isBlockedUrlOrTitle(url: string, title: string): boolean {
+  const combined = (url + " " + title).toLowerCase();
+  return BLOCK_URL_PATTERNS.some((p) => combined.includes(p.toLowerCase()));
+}
 
 function stripHtml(html: string): string {
   return html
@@ -480,6 +508,10 @@ async function scrapeHtmlSource(source: ScrapeSource): Promise<SourceResult> {
         : containsCallKeyword(relevanceText);
 
       if (!isRelevant) continue;
+
+      // Blokiraj URL-ove koji jasno nisu javni pozivi
+      if (isBlockedUrlOrTitle(url, innerText)) continue;
+
       if (seen.has(url)) continue;
       seen.add(url);
 
