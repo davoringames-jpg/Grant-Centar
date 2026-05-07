@@ -4,14 +4,28 @@ import { createClient } from "@supabase/supabase-js";
 import { format } from "date-fns";
 import { sr } from "date-fns/locale";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export async function POST(request: NextRequest) {
   try {
+    const resendApiKey = process.env.RESEND_API_KEY;
+    if (!resendApiKey) {
+      return NextResponse.json(
+        { error: "RESEND_API_KEY nije konfigurisan" },
+        { status: 500 },
+      );
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !serviceRoleKey) {
+      return NextResponse.json(
+        { error: "Supabase env varijable nisu konfigurisane" },
+        { status: 500 },
+      );
+    }
+
+    const resend = new Resend(resendApiKey);
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
     const { email, organizationName, organizationId } = await request.json();
 
     // Šalji login link
