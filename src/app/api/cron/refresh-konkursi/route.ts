@@ -116,13 +116,8 @@ const RSS_SOURCES: RssSource[] = [
 ];
 
 // HTML stranice za scraping - samo javno dostupne stranice bez SSL problema
-const SCRAPE_SOURCES: ScrapeSource[] = [
-  {
-    donator: "Fond za sport RS",
-    sektor: "sport",
-    pageUrl: "https://www.sportvs.org/javni-pozivi",
-  },
-];
+// sportvs.org ima SSL problem na Vercel infrastrukturi - privremeno isključeno
+const SCRAPE_SOURCES: ScrapeSource[] = [];
 
 // Rijeci koje ukazuju na navigacijske linkove - preskoci
 const NAV_SKIP = new Set([
