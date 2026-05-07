@@ -138,42 +138,42 @@ const SCRAPE_SOURCES: ScrapeSource[] = [
   {
     donator: "Vlada RS - Ministarstvo poljoprivrede",
     sektor: "poljoprivreda",
-    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mps/Pages/default.aspx",
+    pageUrl: "https://vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mps/media/vijesti",
   },
   {
     donator: "Vlada RS - Ministarstvo privrede",
     sektor: "privreda",
-    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mpp/Pages/default.aspx",
+    pageUrl: "https://vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mpp/media/vijesti",
   },
   {
     donator: "Vlada RS - Ministarstvo finansija",
     sektor: "privreda",
-    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mf/Pages/default.aspx",
+    pageUrl: "https://vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mf/media/vijesti",
   },
   {
     donator: "Vlada RS - Ministarstvo prostornog uredenja",
     sektor: "infrastruktura",
-    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mgr/Pages/default.aspx",
+    pageUrl: "https://vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mgr/media/vijesti",
   },
   {
     donator: "Vlada RS - Ministarstvo nauke",
     sektor: "nauka",
-    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mnk/Pages/default.aspx",
+    pageUrl: "https://vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mnk/media/vijesti",
   },
   {
     donator: "Vlada RS - Ministarstvo porodice",
     sektor: "socijala",
-    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mpb/Pages/default.aspx",
+    pageUrl: "https://vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mpb/media/vijesti",
   },
   {
     donator: "Vlada RS - Ministarstvo kulture",
     sektor: "kultura",
-    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mpk/Pages/default.aspx",
+    pageUrl: "https://vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mpk/media/vijesti",
   },
   {
     donator: "Vlada RS - Ministarstvo zdravlja",
     sektor: "zdravstvo",
-    pageUrl: "https://www.vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mzsz/Pages/default.aspx",
+    pageUrl: "https://vladars.rs/sr-SP-Cyrl/Vlada/Ministarstva/mzsz/media/vijesti",
   },
   {
     donator: "Eko fond RS",
@@ -592,9 +592,10 @@ async function scrapeHtmlSource(source: ScrapeSource): Promise<SourceResult> {
         continue;
       }
 
-      // Mora biti isti hostname
+      // Mora biti isti hostname (normalizuj www. prefiks)
       try {
-        if (new URL(url).hostname !== base.hostname) continue;
+        const normalizeHost = (h: string) => h.startsWith("www.") ? h.slice(4) : h;
+        if (normalizeHost(new URL(url).hostname) !== normalizeHost(base.hostname)) continue;
       } catch {
         continue;
       }
