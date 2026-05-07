@@ -103,7 +103,6 @@ type SourceResult = {
 };
 
 // RSS feeds - automatski povlace sve nove objave
-// RSS feeds - automatski povlace sve nove objave
 // Keywords su prazni niz = prihvati sve objave bez filtriranja
 const RSS_SOURCES: RssSource[] = [
   {
@@ -111,32 +110,18 @@ const RSS_SOURCES: RssSource[] = [
     sektor: "privreda",
     feedUrl: "https://www.rars-msp.org/feed",
     pageUrl: "https://www.rars-msp.org/javni-pozivi",
-    // Prazan niz = uzmi sve (RSS je vec curilica, keyword filter latinice ne radi)
+    // Prazan niz = uzmi sve (RSS je vec cirilica, keyword filter latinice ne radi)
     keywords: [],
-  },
-  {
-    donator: "INTERREG Adriatic-Ionian",
-    sektor: "međunarodni",
-    feedUrl: "https://www.adriatic-ionian.eu/feed",
-    pageUrl: "https://www.adriatic-ionian.eu/calls-for-proposals/",
-    keywords: ["call", "proposal", "grant", "open"],
-  },
-  {
-    donator: "UNDP BiH",
-    sektor: "međunarodni",
-    feedUrl: "https://www.undp.org/bosnia-herzegovina/feed",
-    pageUrl: "https://www.undp.org/bosnia-herzegovina",
-    keywords: ["call", "grant", "tender", "procurement", "poziv"],
   },
 ];
 
 // HTML stranice za scraping - samo javno dostupne stranice bez SSL problema
 const SCRAPE_SOURCES: ScrapeSource[] = [
-  { donator: "FZO RS", sektor: "zdravstvo", pageUrl: "https://www.fzors.ba/javni-pozivi" },
-  { donator: "Swiss PRO (SDC)", sektor: "međunarodni", pageUrl: "https://www.swiss-pro.ba/pozivi-za-aplikacije/" },
-  { donator: "IRB RS", sektor: "privreda", pageUrl: "https://www.irbrs.org/sr/javni-pozivi" },
-  { donator: "EU4Business BiH", sektor: "privreda", pageUrl: "https://eu4business.ba/calls/" },
-  { donator: "USAID BiH", sektor: "međunarodni", pageUrl: "https://ba.usembassy.gov/grants/" },
+  {
+    donator: "Fond za sport RS",
+    sektor: "sport",
+    pageUrl: "https://www.sportvs.org/javni-pozivi",
+  },
 ];
 
 // Rijeci koje ukazuju na navigacijske linkove - preskoci
@@ -172,10 +157,22 @@ function parseRssFeed(xml: string, source: RssSource): ScrapedItem[] {
       raw.match(/<title>([\s\S]*?)<\/title>/);
     if (!titleMatch) continue;
 
-    const linkMatch =
-      raw.match(/<link>(https?:\/\/[^<]+)<\/link>/) ||
-      raw.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/);
-    if (!linkMatch) continue;
+    // Izvuci direktni link i guid permalink
+    const directLinkMatch = raw.match(/<link>(https?:\/\/[^<]+)<\/link>/);
+    const guidMatch = raw.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/);
+
+    // WordPress ponekad stavlja homepage/www u <link> a pravi permalink u <guid>
+    // Koristi guid kada direktni link nema smisla (homepage, /www/, query-only)
+    let rawLink = directLinkMatch?.[1]?.trim() ?? "";
+    const isUselessLink =
+      !rawLink ||
+      rawLink.endsWith("/www/") ||
+      rawLink === source.pageUrl ||
+      rawLink === source.feedUrl.replace("/feed", "/");
+    if (isUselessLink && guidMatch) {
+      rawLink = guidMatch[1].trim();
+    }
+    if (!rawLink || rawLink.endsWith("/www/")) continue;
 
     const dateMatch =
       raw.match(/<pubDate>([\s\S]*?)<\/pubDate>/) ||
@@ -194,7 +191,7 @@ function parseRssFeed(xml: string, source: RssSource): ScrapedItem[] {
     }
 
     const naslov = titleMatch[1].trim();
-    const link = decodeURIComponent(linkMatch[1].trim());
+    const link = decodeURIComponent(rawLink);
 
     // Ako keywords nije prazan, filtriraj - inace prihvati sve
     if (source.keywords.length > 0) {
@@ -202,7 +199,7 @@ function parseRssFeed(xml: string, source: RssSource): ScrapedItem[] {
       const relevant = source.keywords.some((kw) => combined.includes(kw));
       if (!relevant) continue;
     }
-    if (link === source.pageUrl || link.endsWith("/www/")) continue;
+    if (link === source.pageUrl) continue;
 
     // Sazetak iz opisa, ako postoji
     let ai_sazetak = `Javni poziv od ${source.donator}. Pogledajte originalni link za detalje i uslove prijave.`;
