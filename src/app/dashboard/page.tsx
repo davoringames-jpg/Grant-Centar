@@ -111,10 +111,11 @@ async function getUserTier(): Promise<"public" | "subscriber" | "admin"> {
 
 async function getKonkursi(): Promise<Konkurs[]> {
   const supabase = await createClient();
+  const allowDemoFallback = process.env.NODE_ENV !== "production";
 
   if (!supabase) {
-    // Lokalni fallback ako Supabase nije konfigurisan.
-    return demoKonkursi;
+    // Demo podaci su dozvoljeni samo van produkcije.
+    return allowDemoFallback ? demoKonkursi : [];
   }
 
   const { data, error } = await supabase
@@ -125,8 +126,7 @@ async function getKonkursi(): Promise<Konkurs[]> {
     .order("rok_prijave", { ascending: true, nullsFirst: false });
 
   if (error || !data) {
-    // Na produkciji ne prikazuj demo podatke ako je DB dostupna.
-    return [];
+    return allowDemoFallback ? demoKonkursi : [];
   }
 
   const filtered = data
