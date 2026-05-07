@@ -3,7 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { supabaseAnonKey, supabaseUrl } from "@/lib/supabase/env";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.next();
   }
@@ -27,7 +27,7 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  // Osvježi sesiju — mora biti pozvano u svakom middleware-u
+  // Osvjezi sesiju — mora biti pozvano u svakom proxy-u.
   await supabase.auth.getUser();
 
   return response;
