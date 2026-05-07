@@ -365,7 +365,41 @@ function extractPublishedDate(html: string, text: string, url: string): string |
     if (parsed) return parsed;
   }
 
-  // 3) WordPress URL fallback: /YYYY/MM/DD/
+  // 3) Srpski/ćirilični nazivi meseca: "09 децембар 2025", "14. novembra 2025"
+  const srMonths: Record<string, string> = {
+    // Ćirilica
+    "јануар": "01", "фебруар": "02", "март": "03", "април": "04",
+    "мај": "05", "јун": "06", "јул": "07", "август": "08",
+    "септембар": "09", "октобар": "10", "новембар": "11", "децембар": "12",
+    // Latinica (genitiv i nominativ)
+    "januar": "01", "januara": "01",
+    "februar": "02", "februara": "02",
+    "mart": "03", "marta": "03",
+    "april": "04", "aprila": "04",
+    "maj": "05", "maja": "05",
+    "jun": "06", "juna": "06",
+    "jul": "07", "jula": "07",
+    "avgust": "08", "avgusta": "08",
+    "septembar": "09", "septembra": "09",
+    "oktobar": "10", "oktobra": "10",
+    "novembar": "11", "novembra": "11",
+    "decembar": "12", "decembra": "12",
+  };
+  const srMonthPattern = Object.keys(srMonths).join("|");
+  const srDateRe = new RegExp(
+    `(\\d{1,2})\\.?\\s+(${srMonthPattern})\\s+(20\\d{2})`,
+    "gi",
+  );
+  const srMatches = [...text.matchAll(srDateRe)];
+  if (srMatches.length > 0) {
+    const m = srMatches[0];
+    const day = String(Number(m[1])).padStart(2, "0");
+    const month = srMonths[m[2].toLowerCase()];
+    const year = m[3];
+    if (month) return `${year}-${month}-${day}`;
+  }
+
+  // 4) WordPress URL fallback: /YYYY/MM/DD/
   const fromUrl = url.match(/\/(20\d{2})\/(\d{2})\/(\d{2})(\/|$)/);
   if (fromUrl) {
     const ymd = `${fromUrl[1]}-${fromUrl[2]}-${fromUrl[3]}`;
